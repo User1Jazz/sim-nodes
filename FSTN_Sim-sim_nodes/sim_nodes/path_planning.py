@@ -13,6 +13,8 @@ import numpy as np
 class PathPlanning(Node):
 
     point = [0,0]
+    stop = False
+    orange_in_sight = False
 
     def __init__(self):
         super().__init__('path_planning')
@@ -34,8 +36,17 @@ class PathPlanning(Node):
         angle = self.get_steering(self.point)
         
         msg = Ai2vcu()
-        msg.axle_speed_request_rpm = float(500)    # min: 0,   max 4000
-        msg.steer_angle_request_deg = angle      # min: -21, max: 21
+        if not self.stop and not self.orange_in_sight:
+            msg.axle_speed_request_rpm = float(500)    # min: 0,   max 4000
+            msg.steer_angle_request_deg = angle      # min: -21, max: 21
+        elif self.orange_in_sight and not self.stop:
+            msg.axle_speed_request_rpm = float(500)
+            msg.steer_angle_request_deg =  float(0)
+        elif self.stop and not self.orange_in_sight:
+            msg.axle_speed_request_rpm = float(0)
+            msg.brake_press_request_pct = float(10000)
+            msg.steer_angle_request_deg = float(0)
+        
         self.publisher_.publish(msg)
         self.get_logger().info('Publishing speed: "%f"' % msg.axle_speed_request_rpm)
         self.get_logger().info('Publishing steering: "%f"' % msg.steer_angle_request_deg)
@@ -50,14 +61,20 @@ class PathPlanning(Node):
         for cone in msg.yellow_cones:
             self.get_logger().info('X: "%f", Y: "%f", Z: "%f"' % (cone.x, cone.y, cone.z))
         
-        if len(msg.blue_cones) > 0 and len(msg.yellow_cones) > 0:
-            self.point = self.calculate_midpoint(msg.blue_cones[0], msg.yellow_cones[0])
-        elif len(msg.blue_cones) == 0:
-            self.point = [-1,1]
-        elif len(msg.yellow_cones) == 0:
-            self.point = [1,1]
-        else:
-            self.point = [0,1]
+        if len(msg.orange_cones) == 0 and not self.orange_in_sight:
+            if len(msg.blue_cones) > 0 and len(msg.yellow_cones) > 0:
+                self.point = self.calculate_midpoint(msg.blue_cones[0], msg.yellow_cones[0])
+            elif len(msg.blue_cones) == 0:
+                self.point = [-1,1]
+            elif len(msg.yellow_cones) == 0:
+                self.point = [1,1]
+            else:
+                self.point = [0,1]
+        elif len(msg.orange_cones) > 0:
+            self.orange_in_sight = True
+        
+        if len(msg.orange_cones) == 0 and self.orange_in_sight:
+            self.stop = True
 
         #self.get_logger().info('Orange Cones:')
         #for cone in msg.big_orange_cones:
